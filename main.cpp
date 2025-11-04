@@ -26,7 +26,7 @@ JudgeStatus stringToStatus(const string& status) {
     if (status == "Wrong_Answer") return JudgeStatus::Wrong_Answer;
     if (status == "Runtime_Error") return JudgeStatus::Runtime_Error;
     if (status == "Time_Limit_Exceed") return JudgeStatus::Time_Limit_Exceed;
-    throw runtime_error("Invalid status: " + status);
+    return JudgeStatus::Wrong_Answer; // Default fallback
 }
 
 // Convert JudgeStatus to string
@@ -117,30 +117,14 @@ public:
         }
     }
 
-    // Unfreeze a problem
-    bool unfreeze_problem(const string& problem_name) {
-        auto& problem = problems[problem_name];
-        if (!problem.is_frozen()) return false;
-
-        bool changed = false;
-
-        // Process frozen submissions
-        for (int i = 0; i < problem.frozen_submissions; i++) {
-            // Check if any submission was accepted
-            // We need to find the first accepted submission in frozen period
-            // For simplicity, we'll assume we track this properly
-        }
-
-        // For now, we'll handle this in the main logic
-        problem.frozen_submissions = 0;
-        problem.frozen_wrong_attempts = 0;
-
-        return changed;
-    }
-
     // Get problem display string
     string get_problem_display(const string& problem_name) const {
-        const auto& problem = problems.at(problem_name);
+        const auto it = problems.find(problem_name);
+        if (it == problems.end()) {
+            return ".";
+        }
+
+        const auto& problem = it->second;
 
         if (problem.is_frozen()) {
             if (problem.wrong_attempts == 0) {
@@ -178,7 +162,6 @@ private:
 
     // Scoreboard state
     vector<shared_ptr<Team>> scoreboard;
-    int last_flush_time = 0;
 
 public:
     ICPCSystem() = default;
@@ -212,6 +195,7 @@ public:
         problem_count = problem_cnt;
 
         // Generate problem names (A, B, C, ...)
+        problem_names.clear();
         for (int i = 0; i < problem_count; i++) {
             problem_names.push_back(string(1, 'A' + i));
         }
@@ -228,6 +212,11 @@ public:
 
     void handle_submit(const string& problem_name, const string& team_name,
                       const string& status_str, int time) {
+        if (teams.find(team_name) == teams.end()) {
+            // Team doesn't exist, ignore (shouldn't happen per problem constraints)
+            return;
+        }
+
         JudgeStatus status = stringToStatus(status_str);
 
         auto& team = teams[team_name];
@@ -372,6 +361,11 @@ private:
                      if (a->solve_times[i] != b->solve_times[i]) {
                          return a->solve_times[i] < b->solve_times[i];
                      }
+                 }
+
+                 // If all solve times are equal up to min size, team with more solved problems ranks higher
+                 if (a->solve_times.size() != b->solve_times.size()) {
+                     return a->solve_times.size() > b->solve_times.size();
                  }
 
                  // 4. Lexicographic order of team names
